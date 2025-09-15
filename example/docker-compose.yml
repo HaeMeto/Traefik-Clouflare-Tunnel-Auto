@@ -24,7 +24,7 @@ services:
       - proxy_net
   cloudflared:
     image: cloudflare/cloudflared:latest
-    container_name: cloudflaredRS
+    container_name: cloudflared
     restart: unless-stopped
     command:
       - tunnel
@@ -37,7 +37,7 @@ services:
       - traefik
 
   cloudflare-tunnel-auto:
-    build: ./cf-tunnel-auto
+    image: haemeto/traefik-cloudflare-tunnel-auto
     container_name: cloudflare-tunnel-auto
     restart: unless-stopped
     env_file:
@@ -55,6 +55,7 @@ services:
       - proxy_net
     depends_on:
       - traefik
+      - cloudflared
 
   app:
     image: traefik/whoami

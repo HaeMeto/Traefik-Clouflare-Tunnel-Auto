@@ -8,11 +8,11 @@ providers:
   file:
     directory: "/dynamic"
     watch: true
-  http:
-    endpoint: "<endpoint with json dynamic config>"
-    pollInterval: "10s"
-    tls:
-      insecureSkipVerify: false  
+  # http:
+  #   endpoint: "<endpoint with json dynamic config>"
+  #   pollInterval: "10s"
+  #   tls:
+  #     insecureSkipVerify: false  
 
 log:
   level: "TRACE"
