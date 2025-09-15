@@ -1,0 +1,70 @@
+
+services:
+  traefik:
+    image: traefik:v3.5.1
+    restart: always
+    command:
+      - "--configFile=/static-traefik.yml"
+    env_file:
+      - .env
+    ports:
+      - 8088:8080
+    environment:
+    - CLOUDFLARE_DNS_API_TOKEN=${CF_API_TOKEN}
+    volumes:
+      - ./static-traefik.yml:/static-traefik.yml:ro
+      - ./dynamic:/dynamic:ro
+      - ./letsencrypt:/letsencrypt
+      - ./logs:/var/log/traefik # Volume to store Traefik logs
+      - ./pki:/etc/traefik/pki:ro
+    container_name: traefik
+    extra_hosts:
+      - "host.docker.internal:172.17.0.1"
+    networks:
+      - proxy_net
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflaredRS
+    restart: unless-stopped
+    command:
+      - tunnel
+      - --no-autoupdate
+      - run
+      - --token=${CF_TUNNEL_TOKEN}
+    networks:
+      - proxy_net
+    depends_on:
+      - traefik
+
+  cloudflare-tunnel-auto:
+    build: ./cf-tunnel-auto
+    container_name: cloudflare-tunnel-auto
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      CLOUDFLARE_API_TOKEN: ${CF_API_TOKEN}
+      CLOUDFLARE_TUNNEL_ID: ${CF_TUNNEL_ID}
+      TRAEFIK_SERVICE_ENDPOINT: https://traefik:443
+      TRAEFIK_API_ENDPOINT: http://traefik:8080
+      TRAEFIK_ENTRYPOINTS: web,websecure
+      POLL_INTERVAL: 10s
+      SKIP_TLS_ROUTES: false
+      LOG_LEVEL: debug
+    networks:
+      - proxy_net
+    depends_on:
+      - traefik
+
+  app:
+    image: traefik/whoami
+    container_name: whoami
+    restart: unless-stopped
+    networks:
+      - proxy_net
+
+networks:
+  proxy_net:
+    driver: bridge
+    name: proxy_net
+    enable_ipv6: true

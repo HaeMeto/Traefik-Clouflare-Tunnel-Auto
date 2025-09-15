@@ -1,0 +1,39 @@
+entryPoints:
+  web:
+    address: ":80"
+  websecure:
+    address: ":443"
+
+providers:
+  file:
+    directory: "/dynamic"
+    watch: true
+  http:
+    endpoint: "<endpoint with json dynamic config>"
+    pollInterval: "10s"
+    tls:
+      insecureSkipVerify: false  
+
+log:
+  level: "TRACE"
+  format: "common"
+  maxSize: 100
+  maxBackups: 3
+  maxAge: 3
+  compress: true
+
+certificatesResolvers:
+  cloudflare:
+    acme:
+      email: <your-email>
+      storage: /letsencrypt/acme.json
+      dnsChallenge:
+        provider: cloudflare
+        delayBeforeCheck: 0
+        resolvers:
+          - "1.1.1.1:53"
+          - "8.8.8.8:53"
+
+api:
+  dashboard: true
+  insecure: true
