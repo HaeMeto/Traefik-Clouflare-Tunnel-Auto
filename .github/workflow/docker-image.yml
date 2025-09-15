@@ -55,8 +55,8 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
-          context: ./cf-tunnel-auto
-          file: ./cf-tunnel-auto/Dockerfile  # Points to your Dockerfile
+          context: .
+          file: ./Dockerfile  # Points to your Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
