@@ -4,7 +4,6 @@ pki/*
 !pki/.gitkeep
 letsencrypt/*
 !letsencrypt/.gitkeep
-dynamic/*
-!dynamic/.gitkeep
+
 logs/*
 !logs/.gitkeep

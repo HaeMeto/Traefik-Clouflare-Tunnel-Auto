@@ -1,0 +1,23 @@
+http:
+  middlewares:
+    redirect-to-https:
+      redirectScheme:
+        scheme: https
+
+  routers:
+    whoami:
+      rule: "Host(`whoami.example.id`)"
+      entryPoints:
+        - websecure
+      service: whoami-service
+      tls:
+        certResolver: cloudflare
+
+
+  services:
+    whoami-service:
+      loadBalancer:
+        passHostHeader: false
+        servers:
+          - url: "http://whoami:80"
+   
