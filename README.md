@@ -91,7 +91,7 @@ services:
     container_name: traefik-cloudflare-tunnel-auto
     restart: unless-stopped
     env_file: .env
-    # If your code is in ./app and entry is sync.py, mount it (optional for dev):
+    # If your code is in ./app and entry is main.py, mount it (optional for dev):
     # volumes:
     #   - ./app:/app
     command: ["python", "main.py"]
@@ -195,7 +195,7 @@ httpx>=0.27.0
 
 * **Tunnel ingress**: In Cloudflare Zero Trust → Networks → Tunnels → your tunnel → Configuration. You should see hostnames **excluding** local/office domains.
 * **DNS**: In Cloudflare DNS → verify each domain record type/target and proxied flag.
-* **Logs**: `docker compose logs -f traefik-cf-sync`.
+* **Logs**: `docker compose logs -f traefik-cloudflare-tunnel-auto`.
 
 ---
 
