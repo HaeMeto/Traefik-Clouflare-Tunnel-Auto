@@ -36,10 +36,10 @@ Create a `.env` file in the project root:
 
 ```env
 # Cloudflare
+CLOUDFLARE_EMAIL=email@domain.com
 CLOUDFLARE_API_TOKEN=your_cf_api_token
 CLOUDFLARE_TUNNEL_ID=your_tunnel_id
-# Optional (auto-resolved if omitted)
-CLOUDFLARE_ACCOUNT_ID=
+CLOUDFLARE_TUNNEL_TOKEN=
 
 # Traefik API (http://<traefik-host>:8080)
 TRAEFIK_API_ENDPOINT=http://traefik:8080
@@ -49,10 +49,6 @@ TRAEFIK_ENTRYPOINTS=web,websecure,local,office
 # Where your Traefik (or upstream) is reachable **inside** your network.
 # The host/IP portion will be used for A records on local/office domains.
 TRAEFIK_SERVICE_ENDPOINT=http://192.168.1.10:8080
-
-# General behavior
-POLL_INTERVAL=10
-SKIP_TLS_ROUTES=true
 ```
 
 **Important**
