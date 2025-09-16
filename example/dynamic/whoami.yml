@@ -5,6 +5,7 @@ http:
         scheme: https
 
   routers:
+    # === PUBLIC ===
     whoami:
       rule: "Host(`whoami.example.id`)"
       entryPoints:
@@ -13,6 +14,13 @@ http:
       tls:
         certResolver: cloudflare
 
+    # === LOCAL  ===
+    whoami-lan:
+      rule: "Host(`whoami.local.my.id`)"
+      entryPoints: ["websecure","office"] 
+      middlewares: ["default-whitelist"]
+      service: whoami-svc
+      tls: {}
 
   services:
     whoami-service:
