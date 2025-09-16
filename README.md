@@ -135,8 +135,8 @@ docker compose up -d
 ### Option C — Use Example File
 
 ```bash
-git clone https://github.com/HaeMeto/Traefik-Clouflare-Tunnel-Auto.git .
-cd example
+git clone https://github.com/HaeMeto/Traefik-Clouflare-Tunnel-Auto.git
+cd Traefik-Clouflare-Tunnel-Auto/example
 ```
 
 Start:
