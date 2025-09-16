@@ -88,7 +88,7 @@ Then:
 docker compose up -d
 ```
 
-### Option B — Use a prebuilt image
+### Option B — Use a prebuilt image 
 
 ```yaml
 version: '3.8'
@@ -98,6 +98,21 @@ services:
     container_name: traefik-cloudflare-tunnel-auto
     restart: unless-stopped
     env_file: .env
+```
+
+Start:
+
+```bash
+docker compose up -d
+```
+
+---
+
+### Option C — Use Example File
+
+```yaml
+git clone https://github.com/HaeMeto/Traefik-Clouflare-Tunnel-Auto.git .
+cd example
 ```
 
 Start:
