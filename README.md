@@ -1,5 +1,4 @@
-# Traefik-Clouflare-Tunnel-Auto
-
+# Traefik-Cloudflare-Tunnel-Auto
 
 Automatically sync your **Traefik HTTP routers** to **Cloudflare Zero Trust Tunnel** and **DNS records**. This service reads router rules from Traefik, updates the tunnel ingress, and reconciles DNS so your domains resolve correctly.
 
@@ -7,6 +6,27 @@ Automatically sync your **Traefik HTTP routers** to **Cloudflare Zero Trust Tunn
 >
 > * Routers on normal entrypoints → **CNAME** to `<TUNNEL_ID>.cfargotunnel.com` with `proxied: true`.
 > * Routers on `local` or `office` entrypoints → **A** record to your **local IP** with `proxied: false` (no tunnel).
+
+---
+
+# Table of Contents
+
+* [Features](#features)
+* [Requirements](#requirements)
+* [Environment Variables (`.env`)](#environment-variables-env)
+* [Quick Start with Docker Compose](#quick-start-with-docker-compose)
+
+  * [Option A — Build locally](#option-a--build-locally)
+  * [Option B — Use a prebuilt image](#option-b--use-a-prebuilt-image)
+  * [Option C — Use Example File](#option-c--use-example-file)
+* [Example Dockerfile](#example-dockerfile)
+* [How It Works](#how-it-works)
+* [Verifying](#verifying)
+* [Troubleshooting](#troubleshooting)
+* [Advanced Configuration](#advanced-configuration)
+* [Security Notes](#security-notes)
+* [License](#license)
+* [Disclaimer](#disclaimer)
 
 ---
 
@@ -23,7 +43,7 @@ Automatically sync your **Traefik HTTP routers** to **Cloudflare Zero Trust Tunn
 ## Requirements
 
 * Traefik with API/dashboard enabled (read-only is fine): typically `:8080`.
-* A Cloudflare **API Token** with permissions: `Zone:Read`, `DNS:Read`, `DNS:Edit`, `Account:Cloudflare Tunnel:Read`, `Account:Cloudflare Tunnel:Edit`.
+* A Cloudflare **API Token** with permissions: `Account:Cloudflare Tunnel:Edit`, `Account:Zero Trust:Edit`,  `User Details:Read`,`Zone:DNS:Edit`.
 * An existing **Cloudflare Tunnel** (created via `cloudflared` or dashboard) and its **Tunnel ID**.
 
 > **Note**: The service does **not** create tunnels; it only updates the configuration/ingress for an existing one and manages DNS records.
@@ -74,7 +94,7 @@ services:
     # If your code is in ./app and entry is sync.py, mount it (optional for dev):
     # volumes:
     #   - ./app:/app
-    command: ["python", "sync.py"]
+    command: ["python", "main.py"]
 ```
 
 Then:
@@ -83,7 +103,7 @@ Then:
 docker compose up -d
 ```
 
-### Option B — Use a prebuilt image 
+### Option B — Use a prebuilt image
 
 ```yaml
 version: '3.8'
@@ -105,7 +125,7 @@ docker compose up -d
 
 ### Option C — Use Example File
 
-```yaml
+```bash
 git clone https://github.com/HaeMeto/Traefik-Clouflare-Tunnel-Auto.git .
 cd example
 ```
@@ -185,10 +205,20 @@ httpx>=0.27.0
   * `TRAEFIK_SERVICE_ENDPOINT` should resolve to an **IP**. The script extracts the host and uses it as-is.
 * **Auth/permission errors**
 
-  * Confirm API token scopes: `Zone:Read`, `DNS:Read`, `DNS:Edit`, `Account:Cloudflare Tunnel:Read/Edit`.
+  * Confirm API token scopes: `Account:Cloudflare Tunnel:Edit`, `Account:Zero Trust:Edit`,  `User Details:Read`,`Zone:DNS:Edit`.
 * **TLS routers skipped**
 
   * Set `SKIP_TLS_ROUTES=false` to include TLS-enabled routers in processing (default skips them).
+
+---
+
+## Advanced Configuration
+
+For more complex setups and additional configuration options, please refer to the official documentation and community projects:
+
+* [Cloudflare Tunnel Documentation](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/)
+* [Traefik Documentation](https://doc.traefik.io/traefik/)
+* [hhftechnology/pangolin-cloudflare-tunnel](https://github.com/hhftechnology/pangolin-cloudflare-tunnel)
 
 ---
 
