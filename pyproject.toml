@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "traefik-cloudflare-tunnel-auto"
+version = "1.4.0"
+description = "Automated Traefik to Cloudflare Tunnel sync with Docker build and GitHub Actions"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [
+    { name="HaeMeto", email="haemeto@gmail.com" }
+]
+keywords = ["traefik", "cloudflare", "docker", "github-actions", "ci-cd"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+Homepage = "https://github.com/HaeMeto/Traefik-Clouflare-Tunnel-Auto"
+Documentation = "https://github.com/HaeMeto/Traefik-Clouflare-Tunnel-Auto"
+Source = "https://github.com/HaeMeto/Traefik-Clouflare-Tunnel-Auto"
+Issues = "https://github.com/HaeMeto/Traefik-Clouflare-Tunnel-Auto/issues"
