@@ -7,13 +7,35 @@ from dataclasses import dataclass
 from contextlib import contextmanager
 from dotenv import load_dotenv
 import requests
-from cf_utils import CloudflareDNS   
-# --- imports (letakkan di atas file) ---
+
+
+
+# Cloudflare Python SDK resmi
 from cloudflare import Cloudflare
 
 import httpx
-from typing import List, Dict, Any
+from typing import Any
 
+# =========================
+# Helpers
+# =========================
+
+def extract_host(url: str) -> str:
+    """Extract hostname/IP from URL without schema and port"""
+    if not url:
+        return url
+    if '://' in url:
+        url = url.split('://', 1)[-1]
+    if '/' in url:
+        url = url.split('/', 1)[0]
+    if ':' in url:
+        url = url.split(':', 1)[0]
+    return url
+
+
+# =========================
+# Bootstrap
+# =========================
 
 # Load environment variables from .env file
 load_dotenv(override=True)
@@ -25,6 +47,11 @@ logging.basicConfig(
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
+
+
+# =========================
+# Config
+# =========================
 
 @dataclass
 class Config:
@@ -41,32 +68,30 @@ class Config:
     @classmethod
     def from_env(cls) -> 'Config':
         """Load konfigurasi dari environment variables dan .env file"""
-        # Check for .env file
         if os.path.exists('.env'):
             logger.info("Loading configuration from .env file")
         else:
             logger.warning("No .env file found, using system environment variables")
 
-        # Parse traefik entrypoints with validation
+        # Parse traefik entrypoints
         entrypoints_str = os.getenv('TRAEFIK_ENTRYPOINTS')
         if entrypoints_str:
             entrypoints = [ep.strip() for ep in entrypoints_str.split(',') if ep.strip()]
         else:
-            # Backward compatibility
             single_ep = os.getenv('TRAEFIK_ENTRYPOINT')
             if single_ep and single_ep.strip():
                 entrypoints = [single_ep.strip()]
             else:
                 entrypoints = []
 
-        # Parse skip TLS routes with validation
+        # Parse skip TLS routes
         skip_tls = os.getenv('SKIP_TLS_ROUTES', 'true').lower()
         if skip_tls not in ['true', 'false']:
             logger.warning(f"Invalid SKIP_TLS_ROUTES value: {skip_tls}. Using default: true")
             skip_tls = 'true'
         skip_tls_routes = skip_tls != 'false'
 
-        # Parse poll interval with bounds checking
+        # Parse poll interval
         try:
             poll_interval = int(os.getenv('POLL_INTERVAL', '10'))
             if poll_interval < 1:
@@ -90,7 +115,6 @@ class Config:
             poll_interval=poll_interval
         )
 
-        # Validate required configs
         missing = []
         if not config.cloudflare_token:
             missing.append('CLOUDFLARE_API_TOKEN')
@@ -106,7 +130,6 @@ class Config:
         if missing:
             raise ValueError(f"Missing required environment variables: {', '.join(missing)}")
 
-        # Log non-sensitive configuration
         logger.info("Configuration loaded successfully:")
         logger.info(f"- Traefik API: {config.traefik_api_endpoint}")
         logger.info(f"- Entrypoints: {config.traefik_entrypoints}")
@@ -116,6 +139,11 @@ class Config:
 
         return config
 
+
+# =========================
+# Traefik Client
+# =========================
+
 class TraefikClient:
     """Client untuk komunikasi dengan Traefik API"""
     def __init__(self, api_endpoint: str):
@@ -124,23 +152,52 @@ class TraefikClient:
 
     def get_routers(self) -> List[Dict]:
         """Ambil daftar router dari Traefik API"""
-        resp = self.session.get(f"{self.api_endpoint}/api/http/routers")
-        resp.raise_for_status()
-        routers = resp.json()
-        
-        # Filter out routers that only have "traefik" entrypoint
-        filtered_routers = []
-        for router in routers:
-            entrypoints = router.get('entryPoints', [])
-            # Keep router if it has any entrypoint other than "traefik"
-            if any(ep != "traefik" for ep in entrypoints):
-                filtered_routers.append(router)
-                logger.debug(f"Router {router.get('name')} with entrypoints {entrypoints} included")
-            else:
-                logger.debug(f"Router {router.get('name')} with entrypoints {entrypoints} excluded")
+        try:
+            resp = self.session.get(
+                f"{self.api_endpoint}/api/http/routers",
+                timeout=10
+            )
+            resp.raise_for_status()
+            routers = resp.json()
 
-        # logger.info(f"Found {len(filtered_routers)} routers (excluding traefik-only entrypoints)")
-        return filtered_routers
+            filtered_routers = []
+            for router in routers:
+                entrypoints = router.get('entryPoints', [])
+                if any(ep != "traefik" for ep in entrypoints):
+                    filtered_routers.append(router)
+                    logger.debug(f"Router {router.get('name')} with entrypoints {entrypoints} included")
+                else:
+                    logger.debug(f"Router {router.get('name')} with entrypoints {entrypoints} excluded")
+
+            return filtered_routers
+
+        except requests.ConnectionError:
+            logger.error(f"Connection failed to Traefik API at {self.api_endpoint}")
+            logger.error("Please check if Traefik is running and accessible")
+            return []
+
+        except requests.Timeout:
+            logger.error(f"Connection timeout while accessing Traefik API at {self.api_endpoint}")
+            logger.error("API request took too long to respond")
+            return []
+
+        except requests.RequestException as e:
+            logger.error(f"Failed to fetch routers from Traefik API: {str(e)}")
+            logger.error(f"API Endpoint: {self.api_endpoint}")
+            return []
+
+        except ValueError as e:
+            logger.error(f"Failed to parse JSON response from Traefik API: {str(e)}")
+            return []
+
+        except Exception as e:
+            logger.error(f"Unexpected error while fetching routers: {str(e)}")
+            return []
+
+
+# =========================
+# Retry Context
+# =========================
 
 @contextmanager
 def retry_context(max_retries: int = 3):
@@ -152,25 +209,33 @@ def retry_context(max_retries: int = 3):
         except Exception as e:
             if i == max_retries - 1:
                 raise
-            wait_time = (2 ** i)  # exponential backoff
+            wait_time = (2 ** i)
             logger.warning(f"Operation failed: {e}, retrying in {wait_time}s ({i+1}/{max_retries})")
             time.sleep(wait_time)
+
+
+# =========================
+# Cloudflare Syncer
+# =========================
 
 class CloudflareSyncer:
     """Class utama untuk sinkronisasi Traefik dengan Cloudflare"""
     def __init__(self, config: Config):
         self.config = config
-        # Initialize Cloudflare client with token
-        headers = {
-            'Authorization': f'Bearer {config.cloudflare_token}'
-        }
-        
-        self.cf_helpers = CloudflareDNS(api_token=config.cloudflare_token)
-        
 
+        self.local_endpoint = extract_host(config.traefik_service_endpoint)
+        logger.info(f"Extracted local endpoint: {self.local_endpoint}")
+
+    
+        # SDK resmi
         self.cf = Cloudflare(api_token=config.cloudflare_token)
+
         self.traefik = TraefikClient(config.traefik_api_endpoint)
-        self._router_cache = []
+        self._router_cache: List[Dict] = []
+
+        # penanda domain lokal/office
+        self.local_entrypoints: List[str] = []
+        self.local_domains: set[str] = set()
 
     def get_account_id(self) -> str:
         """Ambil Cloudflare Account ID dari config atau API"""
@@ -178,21 +243,13 @@ class CloudflareSyncer:
             return self.config.cloudflare_account_id
 
         logger.info("Account ID not set in config, fetching from API")
-
         try:
-            # Get accounts list
-            accounts = []
-            for account in self.cf.accounts.list():
-                accounts.append(account)
-
+            accounts = [acc for acc in self.cf.accounts.list()]
             if not accounts:
                 raise ValueError("No Cloudflare accounts found for this API token")
-
-            # Access the ID attribute directly from the Account object
             account_id = accounts[0].id
             logger.info(f"Using account ID: {account_id}")
             return account_id
-
         except Exception as e:
             logger.error(f"Cloudflare API Error: {e}")
             raise
@@ -201,7 +258,7 @@ class CloudflareSyncer:
         """Check if router has TLS properly configured"""
         tls = router.get('tls', {})
         return bool(
-            tls.get('certResolver') and 
+            tls.get('certResolver') and
             (tls.get('options') or tls.get('domains'))
         )
 
@@ -212,32 +269,25 @@ class CloudflareSyncer:
         return any(ep in self.config.traefik_entrypoints for ep in router_eps)
 
     def get_root_domain(self, domain: str) -> str:
-        """Extract root domain from full domain name"""
         parts = domain.split('.')
         if len(parts) < 2:
             return domain
         return '.'.join(parts[-2:])
 
     def build_ingress_rules(self, routers: List[Dict]) -> List[Dict]:
-        """Build Cloudflare tunnel ingress rules from Traefik routers"""
+        """(Opsional) Build rules dari routers - tidak dipakai di flow utama"""
         ingress = []
         processed_domains = set()
 
         for router in routers:
-            # Skip disabled routes
             if router.get('status') != 'enabled':
                 continue
-
-            # Skip TLS routes if configured
             if self.config.skip_tls_routes and self.has_tls_enabled(router):
                 logger.debug(f"Skipping TLS-enabled router: {router.get('name')}")
                 continue
-
-            # Check entrypoints
             if not self.has_matching_entrypoint(router.get('entryPoints', [])):
                 continue
 
-            # Parse domains from Host rule
             rule = router.get('rule', '')
             if not rule.startswith('Host('):
                 continue
@@ -261,20 +311,14 @@ class CloudflareSyncer:
                     }
                 })
 
-        # Add catch-all rule
-        ingress.append({
-            'service': 'http_status:404'
-        })
-
+        ingress.append({'service': 'http_status:404'})
         return ingress
 
     def get_zones(self) -> List[Dict]:
         """Get all available zones from Cloudflare"""
         logger.info("Fetching zones from Cloudflare API")
-        
         try:
             zones = []
-            # Get all zones with pagination
             for zone in self.cf.zones.list():
                 zones.append({
                     'id': zone.id,
@@ -289,19 +333,13 @@ class CloudflareSyncer:
                 logger.warning("No zones found for this API token")
                 return []
 
-            # Log found zones grouped by account
             accounts = {}
             for zone in zones:
-                print(zone)
                 acc_id = zone['account']['id']
                 if acc_id not in accounts:
-                    accounts[acc_id] = {
-                        'name': zone['account']['name'],
-                        'zones': []
-                    }
+                    accounts[acc_id] = {'name': zone['account']['name'], 'zones': []}
                 accounts[acc_id]['zones'].append(zone['name'])
 
-           
             logger.info("--------------------------------")
             for acc_id, acc_data in accounts.items():
                 logger.info(f"Account: {acc_data['name']} ({acc_id})")
@@ -313,33 +351,24 @@ class CloudflareSyncer:
         except Exception as e:
             logger.error(f"Cloudflare API Error: {e}")
             raise
-    
-   
- 
+
     def sync_tunnel_config(self, ingress: List[Dict]) -> None:
-        """Update tunnel configuration with new ingress rules"""
+        """(Opsional) Update tunnel configuration dengan API lama (tidak dipakai di flow utama)"""
         tunnel_id = self.config.cloudflare_tunnel_id
         zones = self.get_zones()
-
         if not zones:
             raise ValueError("No zones found - cannot determine account for tunnel operations")
 
-        # Use first zone's account for tunnel operations
         account_id = zones[0]['account']['id']
         logger.info(f"Using account {zones[0]['account']['name']} for tunnel operations")
 
         with retry_context():
             try:
-                # Get current config
                 current = self.cf.zones.tunnels.configurations.get(
                     account_id=account_id,
                     tunnel_id=tunnel_id
                 )
-                
-                # Update ingress rules
                 current['config']['ingress'] = ingress
-                
-                # Save changes
                 self.cf.zones.tunnels.configurations.put(
                     account_id=account_id,
                     tunnel_id=tunnel_id,
@@ -352,18 +381,15 @@ class CloudflareSyncer:
 
     def match_domains_with_zones(self, domains: List[str], zones: List[Dict]) -> Dict[str, Dict]:
         """Match domains from Traefik with Cloudflare zones"""
-        domain_matches = {}
-        # Create a map of root domains to zone info
+        domain_matches: Dict[str, Dict] = {}
         zone_map = {zone['name']: zone for zone in zones}
-        
+
         for domain in domains:
-            # Get all possible parent domains
             parts = domain.split('.')
             possible_domains = []
             for i in range(len(parts)-1):
                 possible_domains.append('.'.join(parts[i:]))
-            
-            # Find the matching zone (if any)
+
             matched_zone = None
             matched_domain = None
             for possible_domain in possible_domains:
@@ -371,7 +397,7 @@ class CloudflareSyncer:
                     matched_zone = zone_map[possible_domain]
                     matched_domain = possible_domain
                     break
-            
+
             if matched_zone:
                 domain_matches[domain] = {
                     'zone_id': matched_zone['id'],
@@ -380,24 +406,20 @@ class CloudflareSyncer:
                     'root_domain': matched_domain
                 }
                 logger.info(f"Matched subdomain {domain} to zone {matched_domain} "
-                           f"(Account: {matched_zone['account']['name']})")
+                            f"(Account: {matched_zone['account']['name']})")
             else:
                 logger.warning(f"No matching zone found for domain: {domain}")
-                logger.debug(f"Tried matching against: {possible_domains}")
 
         return domain_matches
 
     def create_tunnel_config(self, domain_matches: Dict[str, Dict]) -> None:
-        """Create or update Zero Trust tunnel configuration"""
+        """Create/update Zero Trust tunnel configuration + sinkronisasi DNS"""
         logger.info("Creating or updating tunnel configuration...")
         tunnel_id = self.config.cloudflare_tunnel_id
-        tunnel_domain = f"{tunnel_id}.cfargotunnel.com"
-
-        logger.info(f"Using tunnel domain: {tunnel_domain}")
         logger.info(f"Tunnel ID: {tunnel_id}")
 
         # Group domains by account
-        account_domains = {}
+        account_domains: Dict[str, Dict[str, Any]] = {}
         for domain, match in domain_matches.items():
             acc_id = match['account_id']
             if acc_id not in account_domains:
@@ -409,27 +431,29 @@ class CloudflareSyncer:
             account_domains[acc_id]['domains'].append(domain)
             account_domains[acc_id]['zone_configs'][domain] = match
 
-        # Process each account
+        # Process per account
         for account_id, acc_data in account_domains.items():
             logger.info(f"Processing account: {acc_data['account_name']}")
-
             try:
-                # Configure tunnel for this account
                 with retry_context():
-                    # Get current tunnel config using correct API path
+                    # Get current tunnel config (Zero Trust path)
                     try:
-                        # Use argo.tunnels instead of accounts.tunnels
                         current = self.cf.zero_trust.tunnels.cloudflared.configurations.get(
                             tunnel_id=tunnel_id,
                             account_id=account_id
                         )
+                        logger.info(f"Fetched current tunnel configuration for account {acc_data['account_name']}")
                     except Exception as e:
                         logger.error(f"Failed to get tunnel configuration: {e}")
                         raise
 
-                    # Build ingress rules for domains in this account
+                    # Build ingress only for non-local/offline domains
                     ingress = []
                     for domain in acc_data['domains']:
+                        if domain in self.local_domains:
+                            logger.info(f"Skipping tunnel ingress for local/office domain: {domain}")
+                            continue
+
                         logger.info(f"Adding domain to tunnel: {domain}")
                         logger.info(f"Using service endpoint: {self.config.traefik_service_endpoint}")
                         ingress.append({
@@ -442,18 +466,11 @@ class CloudflareSyncer:
                             }
                         })
 
-                    # Add catch-all rule
                     ingress.append({"service": "http_status:404"})
 
-                    # Update tunnel config using correct API path
+                    # Update tunnel config
                     try:
-                        config_data = {
-                           
-                                "ingress": ingress
-                            
-                        }
-                        logger.info(f"Config data to update: {config_data}")
-                        # Use argo.tunnels for configuration update
+                        config_data = {"ingress": ingress}
                         self.cf.zero_trust.tunnels.cloudflared.configurations.update(
                             tunnel_id=tunnel_id,
                             account_id=account_id,
@@ -464,29 +481,65 @@ class CloudflareSyncer:
                         logger.error(f"Failed to update tunnel configuration: {e}")
                         raise
 
-                    # Update DNS records
+                    # ===== DNS Sync per-domain =====
                     logger.info("Syncing DNS records...")
                     for domain, match in acc_data['zone_configs'].items():
                         try:
-                        
-                            records = self.cf_helpers.get_cname_records(zone_id=match["zone_id"],
-                            params={"name": domain, "type": "CNAME"})
-                        
-                            if not records:
-                                logger.info(f"No existing DNS record for {domain}, creating new one")
-                                self.cf.dns.records.create(zone_id=match['zone_id'], name=domain, type='CNAME', content=tunnel_domain, ttl=1, proxied=True)
-                                logger.info(f"Created DNS record for {domain}")
-                            elif records[0]['content'] != tunnel_domain:
-                                logger.info(f"Existing DNS record for {domain} points to {records[0]['content']}, updating to {tunnel_domain}")
-                                self.cf.dns.records.update(
-                                    dns_record_id=records[0]['id'],
+                            # default: CNAME ke cfargotunnel, proxied=True
+                            record_type = 'CNAME'
+                            proxied = True
+                            content = f"{tunnel_id}.cfargotunnel.com"
+
+                            # domain lokal/office: A ke IP lokal (extracted), proxied=False
+                            if domain in self.local_domains:
+                                record_type = 'A'
+                                proxied = False
+                                content = self.local_endpoint
+                                logger.info(f"[DNS] {domain} is local/office → A {content} (proxied={proxied})")
+
+                            # cari existing record tipe yg sama
+                            existing_records = list(self.cf.dns.records.list(
+                                zone_id=match['zone_id'],
+                                name=domain,
+                                type=record_type
+                            ))
+
+                            if not existing_records:
+                                logger.info(f"[DNS] No existing {record_type} record for {domain}, creating...")
+                                self.cf.dns.records.create(
                                     zone_id=match['zone_id'],
-                                    name=domain, type='CNAME', content=tunnel_domain, ttl=1, proxied=True
+                                    name=domain,
+                                    type=record_type,
+                                    content=content,
+                                    ttl=1,
+                                    proxied=proxied
                                 )
-                                logger.info(f"Updated DNS record for {domain}")
+                                logger.info(f"[DNS] Created {record_type} {domain} -> {content} (proxied={proxied})")
                             else:
-                                logger.info(f"DNS record for {domain} is already correct, no action needed")
-                                
+                                rec = existing_records[0]
+                                # handle object/dict dari SDK
+                                rec_id = getattr(rec, 'id', None) or rec.get('id')
+                                rec_content = getattr(rec, 'content', None) or rec.get('content')
+                                rec_proxied = getattr(rec, 'proxied', None)
+                                if rec_proxied is None:
+                                    rec_proxied = rec.get('proxied')
+
+                                needs_update = (rec_content != content) or (rec_proxied != proxied)
+
+                                if needs_update:
+                                    logger.info(f"[DNS] Updating {record_type} {domain} from {rec_content} to {content}, proxied={proxied}")
+                                    self.cf.dns.records.update(
+                                        zone_id=match['zone_id'],
+                                        dns_record_id=rec_id,
+                                        name=domain,
+                                        type=record_type,
+                                        content=content,
+                                        ttl=1,
+                                        proxied=proxied
+                                    )
+                                    logger.info(f"[DNS] Updated {record_type} record for {domain}")
+                                else:
+                                    logger.info(f"[DNS] {record_type} record for {domain} already up-to-date")
                         except Exception as e:
                             logger.error(f"Failed to manage DNS record for {domain}: {e}")
 
@@ -496,14 +549,26 @@ class CloudflareSyncer:
     def run(self):
         """Main processing loop"""
         logger.info("Starting sync loop...")
-        
+        consecutive_failures = 0
+        max_failures = 3
+
         while True:
             try:
-                # Get Traefik routers
+                # reset penanda per iterasi
+                self.local_domains = set()
+                self.local_entrypoints = []
+
                 routers = self.traefik.get_routers()
-                
-                # print(routers)
-                # Skip if no changes
+
+                if not routers:
+                    consecutive_failures += 1
+                    wait_time = min(20, self.config.poll_interval * (2 ** consecutive_failures))
+                    logger.warning(f"No routers found, waiting {wait_time}s before retry")
+                    time.sleep(wait_time)
+                    continue
+
+                consecutive_failures = 0
+
                 if routers == self._router_cache:
                     logger.debug("No changes in routers configuration")
                     time.sleep(self.config.poll_interval)
@@ -512,44 +577,54 @@ class CloudflareSyncer:
                 logger.info("Changes detected in Traefik routers")
                 self._router_cache = routers
 
-                # Extract domains from routers using set for uniqueness
+                # Extract domains
                 domains = set()
                 for router in routers:
-                    
-                    # Skip if router is not enabled
                     logger.info(f"Router status: {router.get('status')}")
                     if router.get('status') != 'enabled':
                         logger.debug(f"Skipping disabled router: {router.get('name')}")
                         continue
-                    
-                    # Skip TLS routes if configured
+
                     logger.info(f"Router TLS config: {router.get('tls')}")
                     if self.config.skip_tls_routes and self.has_tls_enabled(router):
                         logger.debug(f"Skipping TLS-enabled router: {router.get('name')}")
+                        # continue  # kalau ingin benar2 skip TLS, uncomment ini
                         pass
 
-                    
-                    # Check entrypoints
                     logger.info(f"Router entrypoints: {router.get('entryPoints', [])}")
                     if not self.has_matching_entrypoint(router.get('entryPoints', [])):
-                        logger.debug(f"Skipping router with non-matching entrypoints: {router.get('name')}")
+                        logger.info(f"Skipping router with non-matching entrypoints: {router.get('name')}")
                         continue
-                    
-                    
-                    # Extract domains from Host rule
-                    
+
                     rule = router.get('rule', '')
                     logger.info(f"Router rule: {rule}")
-                    if 'Host(`' in rule:
-                        import re
-                        domain_matches = re.findall(r'Host\(`([^`]+)`\)', rule)
-                        if domain_matches:
-                            
-                            domains.update(domain_matches)
-                            logger.debug(f"Added domains from router {router.get('name')}: {domain_matches}")
 
-                # Convert set back to list
-                print(domains)
+                    # support format Host(`a.example.com`,`b.example.com`) dan Host(`a.example.com`)
+                    import re
+                    # Ambil semua isi dalam Host(`...`)
+                    host_calls = re.findall(r'Host\(([^)]+)\)', rule)
+                    domain_matches = []
+                    for call in host_calls:
+                        # pisah argumen `foo`,`bar`
+                        items = [x.strip() for x in call.split(',')]
+                        for item in items:
+                            # ambil isi backtick `...`
+                            m = re.match(r'`([^`]+)`', item)
+                            if m:
+                                domain_matches.append(m.group(1))
+
+                    if domain_matches:
+                        domains.update(domain_matches)
+
+                        # Tandai domain lokal/office
+                        eps = router.get('entryPoints', [])
+                        if 'local' in eps or 'office' in eps:
+                            logger.info(f"Router has local/office entrypoint: {router.get('name')}")
+                            self.local_entrypoints.extend(domain_matches)
+                            for d in domain_matches:
+                                self.local_domains.add(d)
+                        logger.debug(f"Added domains from router {router.get('name')}: {domain_matches}")
+
                 domains = list(domains)
 
                 if not domains:
@@ -557,40 +632,41 @@ class CloudflareSyncer:
                     time.sleep(self.config.poll_interval)
                     continue
 
-                # Log found domains
                 logger.info(f"Found {len(domains)} unique domains:")
                 for domain in domains:
-                    logger.info(f"  - {domain}")
+                    logger.info(f"  - {domain} {'(local/office)' if domain in self.local_domains else ''}")
 
-                # Get Cloudflare zones
                 zones = self.get_zones()
                 if not zones:
                     logger.warning("No Cloudflare zones found")
                     time.sleep(self.config.poll_interval)
                     continue
 
-                # Match domains with zones
                 domain_matches = self.match_domains_with_zones(domains, zones)
-                print(domain_matches)
                 if not domain_matches:
                     logger.warning("No domains matched with Cloudflare zones")
                     time.sleep(self.config.poll_interval)
                     continue
 
-                # Update tunnel configuration
+                # Update tunnel + DNS
                 self.create_tunnel_config(domain_matches)
 
             except Exception as e:
+                consecutive_failures += 1
+                wait_time = min(20, self.config.poll_interval * (2 ** consecutive_failures))
                 logger.error(f"Error in sync loop: {e}", exc_info=True)
-                time.sleep(self.config.poll_interval)
+                time.sleep(wait_time)
                 continue
 
-            # Add jitter to avoid thundering herd
             jitter = random.uniform(0, self.config.poll_interval / 2)
             time.sleep(self.config.poll_interval + jitter)
 
+
+# =========================
+# Entrypoint
+# =========================
+
 def main():
-    """Entry point"""
     try:
         config = Config.from_env()
         syncer = CloudflareSyncer(config)
@@ -600,6 +676,7 @@ def main():
     except Exception as e:
         logger.error(f"Fatal error: {e}")
         raise
+
 
 if __name__ == '__main__':
     main()
