@@ -71,9 +71,9 @@ SKIP_TLS_ROUTES=true
 ```yaml
 a version: '3.8'
 services:
-  traefik-cf-sync:
+  traefik-cloudflare-tunnel-auto:
     build: .
-    container_name: traefik-cf-sync
+    container_name: traefik-cloudflare-tunnel-auto
     restart: unless-stopped
     env_file: .env
     # If your code is in ./app and entry is sync.py, mount it (optional for dev):
@@ -93,9 +93,9 @@ docker compose up -d
 ```yaml
 version: '3.8'
 services:
-  traefik-cf-sync:
-    image: your-dockerhub-username/traefik-cf-sync:latest
-    container_name: traefik-cf-sync
+  traefik-cloudflare-tunnel-auto:
+    image: haemeto/traefik-cloudflare-tunnel-auto:latest
+    container_name: traefik-cloudflare-tunnel-auto
     restart: unless-stopped
     env_file: .env
 ```
@@ -112,21 +112,20 @@ docker compose up -d
 
 ```dockerfile
 FROM python:3.11-slim
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends curl ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+ 
 WORKDIR /app
 
-# System deps (as needed)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-  && rm -rf /var/lib/apt/lists/*
-
-# Copy and install deps
-COPY requirements.txt ./
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy app
-COPY . .
+COPY main.py .
 
-CMD ["python", "sync.py"]
+CMD ["python", "main.py"]
+
 ```
 
 `requirements.txt` (example):
