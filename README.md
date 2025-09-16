@@ -113,6 +113,15 @@ services:
     container_name: traefik-cloudflare-tunnel-auto
     restart: unless-stopped
     env_file: .env
+    environment:
+      CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN}
+      CLOUDFLARE_TUNNEL_ID: ${CLOUDFLARE_TUNNEL_ID}
+      TRAEFIK_SERVICE_ENDPOINT: ${TRAEFIK_SERVICE_ENDPOINT}
+      TRAEFIK_API_ENDPOINT: ${TRAEFIK_API_ENDPOINT}
+      TRAEFIK_ENTRYPOINTS: ${TRAEFIK_ENTRYPOINTS}
+      POLL_INTERVAL: 10s
+      SKIP_TLS_ROUTES: false
+      LOG_LEVEL: debug
 ```
 
 Start:
