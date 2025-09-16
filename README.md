@@ -69,7 +69,6 @@ SKIP_TLS_ROUTES=true
 `docker-compose.yml`:
 
 ```yaml
-a version: '3.8'
 services:
   traefik-cloudflare-tunnel-auto:
     build: .
