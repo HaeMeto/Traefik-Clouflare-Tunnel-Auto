@@ -20,18 +20,6 @@ from typing import Any
 # Helpers
 # =========================
 
-def extract_host(url: str) -> str:
-    """Extract hostname/IP from URL without schema and port"""
-    if not url:
-        return url
-    if '://' in url:
-        url = url.split('://', 1)[-1]
-    if '/' in url:
-        url = url.split('/', 1)[0]
-    if ':' in url:
-        url = url.split(':', 1)[0]
-    return url
-
 
 # =========================
 # Bootstrap
@@ -62,8 +50,10 @@ class Config:
     traefik_api_endpoint: str
     traefik_entrypoints: List[str]
     traefik_service_endpoint: str
+    local_service_endpoint: str
     skip_tls_routes: bool = True
     poll_interval: int = 10
+    
 
     @classmethod
     def from_env(cls) -> 'Config':
@@ -112,7 +102,8 @@ class Config:
             traefik_entrypoints=entrypoints,
             traefik_service_endpoint=os.getenv('TRAEFIK_SERVICE_ENDPOINT', '').strip(),
             skip_tls_routes=skip_tls_routes,
-            poll_interval=poll_interval
+            poll_interval=poll_interval,
+            local_service_endpoint=os.getenv('LOCAL_SERVICE_ENDPOINT', '').strip()
         )
 
         missing = []
@@ -126,6 +117,8 @@ class Config:
             missing.append('TRAEFIK_ENTRYPOINTS or TRAEFIK_ENTRYPOINT')
         if not config.traefik_service_endpoint:
             missing.append('TRAEFIK_SERVICE_ENDPOINT')
+        if not config.local_service_endpoint:
+            missing.append('LOCAL_SERVICE_ENDPOINT')
 
         if missing:
             raise ValueError(f"Missing required environment variables: {', '.join(missing)}")
@@ -134,6 +127,7 @@ class Config:
         logger.info(f"- Traefik API: {config.traefik_api_endpoint}")
         logger.info(f"- Entrypoints: {config.traefik_entrypoints}")
         logger.info(f"- Service Endpoint: {config.traefik_service_endpoint}")
+        logger.info(f"- Local Endpoint: {config.local_service_endpoint}")
         logger.info(f"- Skip TLS Routes: {config.skip_tls_routes}")
         logger.info(f"- Poll Interval: {config.poll_interval}s")
 
@@ -223,9 +217,7 @@ class CloudflareSyncer:
     def __init__(self, config: Config):
         self.config = config
 
-        self.local_endpoint = extract_host(config.traefik_service_endpoint)
-        logger.info(f"Extracted local endpoint: {self.local_endpoint}")
-
+        
     
         # SDK resmi
         self.cf = Cloudflare(api_token=config.cloudflare_token)
@@ -494,7 +486,7 @@ class CloudflareSyncer:
                             if domain in self.local_domains:
                                 record_type = 'A'
                                 proxied = False
-                                content = self.local_endpoint
+                                content = self.config.local_service_endpoint
                                 logger.info(f"[DNS] {domain} is local/office → A {content} (proxied={proxied})")
 
                             # cari existing record tipe yg sama
@@ -542,9 +534,11 @@ class CloudflareSyncer:
                                     logger.info(f"[DNS] {record_type} record for {domain} already up-to-date")
                         except Exception as e:
                             logger.error(f"Failed to manage DNS record for {domain}: {e}")
+                            continue
 
             except Exception as e:
                 logger.error(f"Failed to configure tunnel for account {acc_data['account_name']}: {e}")
+                continue
 
     def run(self):
         """Main processing loop"""

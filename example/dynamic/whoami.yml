@@ -4,6 +4,28 @@ http:
       redirectScheme:
         scheme: https
 
+    default-whitelist:
+      ipAllowList:
+        sourceRange:
+        - "10.0.0.0/8"
+        - "192.168.0.0/16"
+        - "172.16.0.0/12"
+        - 127.0.0.1/8        # <— tambah loopback
+        - 100.64.0.0/10       # <— tambah range Tailscale
+        - ::1/128             # <— kalau klien pakai IPv6 loopback  
+    default-headers:
+      headers:
+        frameDeny: true
+        browserXssFilter: true
+        contentTypeNosniff: true
+        forceSTSHeader: true
+        stsIncludeSubdomains: true
+        stsPreload: true
+        stsSeconds: 15552000
+        customFrameOptionsValue: SAMEORIGIN
+        customRequestHeaders:
+          X-Forwarded-Proto: https
+
   routers:
     # === PUBLIC ===
     whoami:
