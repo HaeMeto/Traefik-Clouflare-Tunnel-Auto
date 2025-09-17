@@ -406,9 +406,9 @@ class CloudflareSyncer:
 
     def create_tunnel_config(self, domain_matches: Dict[str, Dict]) -> None:
         """Create/update Zero Trust tunnel configuration + sinkronisasi DNS"""
-        logger.info("Creating or updating tunnel configuration...")
+        logger.info("[TUNNEL] Creating or updating tunnel configuration...")
         tunnel_id = self.config.cloudflare_tunnel_id
-        logger.info(f"Tunnel ID: {tunnel_id}")
+        logger.info(f"[TUNNEL] Tunnel ID: {tunnel_id}")
 
         # Group domains by account
         account_domains: Dict[str, Dict[str, Any]] = {}
@@ -425,7 +425,7 @@ class CloudflareSyncer:
 
         # Process per account
         for account_id, acc_data in account_domains.items():
-            logger.info(f"Processing account: {acc_data['account_name']}")
+            logger.info(f"[TUNNEL]  Processing account: {acc_data['account_name']}")
             try:
                 with retry_context():
                     # Get current tunnel config (Zero Trust path)
@@ -434,20 +434,20 @@ class CloudflareSyncer:
                             tunnel_id=tunnel_id,
                             account_id=account_id
                         )
-                        logger.info(f"Fetched current tunnel configuration for account {acc_data['account_name']}")
+                        logger.info(f"[TUNNEL]  Fetched current tunnel configuration for account {acc_data['account_name']}")
                     except Exception as e:
-                        logger.error(f"Failed to get tunnel configuration: {e}")
+                        logger.error(f"[TUNNEL]  Failed to get tunnel configuration: {e}")
                         raise
 
                     # Build ingress only for non-local/offline domains
                     ingress = []
                     for domain in acc_data['domains']:
                         if domain in self.local_domains:
-                            logger.info(f"Skipping tunnel ingress for local/office domain: {domain}")
+                            logger.info(f"[TUNNEL]  Skipping tunnel ingress for local/office domain: {domain}")
                             continue
 
-                        logger.info(f"Adding domain to tunnel: {domain}")
-                        logger.info(f"Using service endpoint: {self.config.traefik_service_endpoint}")
+                        logger.info(f"[TUNNEL]  Adding domain to tunnel: {domain}")
+                        logger.info(f"[TUNNEL]  Using service endpoint: {self.config.traefik_service_endpoint}")
                         ingress.append({
                             "hostname": domain,
                             "service": self.config.traefik_service_endpoint,
@@ -468,13 +468,13 @@ class CloudflareSyncer:
                             account_id=account_id,
                             config=config_data
                         )
-                        logger.info(f"Updated tunnel configuration for account {acc_data['account_name']}")
+                        logger.info(f"[TUNNEL]  Updated tunnel configuration for account {acc_data['account_name']}")
                     except Exception as e:
-                        logger.error(f"Failed to update tunnel configuration: {e}")
+                        logger.error(f"[TUNNEL]  Failed to update tunnel configuration: {e}")
                         raise
 
                     # ===== DNS Sync per-domain =====
-                    logger.info("Syncing DNS records...")
+                    logger.info("[DNS] Syncing DNS records...")
                     for domain, match in acc_data['zone_configs'].items():
                         try:
                             # default: CNAME ke cfargotunnel, proxied=True
@@ -533,11 +533,11 @@ class CloudflareSyncer:
                                 else:
                                     logger.info(f"[DNS] {record_type} record for {domain} already up-to-date")
                         except Exception as e:
-                            logger.error(f"Failed to manage DNS record for {domain}: {e}")
+                            logger.error(f"[DNS] Failed to manage DNS record for {domain}: {e}")
                             continue
 
             except Exception as e:
-                logger.error(f"Failed to configure tunnel for account {acc_data['account_name']}: {e}")
+                logger.error(f"[TUNNEL] Failed to configure tunnel for account {acc_data['account_name']}: {e}")
                 continue
 
     def run(self):
