@@ -17,13 +17,23 @@ providers:
   #     insecureSkipVerify: false  
 
 log:
-  level: "TRACE"
+  level: "DEBUG"
+  # filePath: "/var/log/traefik/traefik.log"
   format: "common"
   maxSize: 100
   maxBackups: 3
   maxAge: 3
   compress: true
 
+accessLog:
+  filePath: "/var/log/traefik/access.log"
+  bufferingSize: 100
+  filters:
+    statusCodes: 
+     - "204-299"
+     - "400-499"
+     - "500-599"
+     
 certificatesResolvers:
   cloudflare:
     acme:

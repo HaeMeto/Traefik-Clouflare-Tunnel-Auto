@@ -38,11 +38,16 @@ http:
 
     # === LOCAL  ===
     whoami-lan:
-      rule: "Host(`whoami.local.my.id`)"
+      rule: "Host(`whoami.local.id`)"
       entryPoints: ["websecure","office"] 
       middlewares: ["default-whitelist"]
       service: whoami-svc
-      tls: {}
+      tls: 
+          # pertama dns chalange untuk buat certifikat
+          certResolver: cloudflare
+          domains:
+            - main: "domain.id"
+              sans: ["*.local.domain.id"]
 
   services:
     whoami-service:
