@@ -139,6 +139,10 @@ docker compose up -d
 git clone https://github.com/HaeMeto/Traefik-Clouflare-Tunnel-Auto.git
 cd Traefik-Clouflare-Tunnel-Auto/example
 ```
+```bash
+rename .env.example to .env
+update .env with your valid credentials
+```
 
 Start:
 
