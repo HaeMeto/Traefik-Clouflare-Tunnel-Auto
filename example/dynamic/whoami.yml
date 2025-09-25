@@ -10,9 +10,9 @@ http:
         - "10.0.0.0/8"
         - "192.168.0.0/16"
         - "172.16.0.0/12"
-        - 127.0.0.1/8        # <— tambah loopback
-        - 100.64.0.0/10       # <— tambah range Tailscale
-        - ::1/128             # <— kalau klien pakai IPv6 loopback  
+        - 127.0.0.1/8        # <— add loopback
+        - 100.64.0.0/10       # <— ad range Tailscale
+        - ::1/128             # <— add klien using IPv6 loopback  
     default-headers:
       headers:
         frameDeny: true
@@ -43,7 +43,7 @@ http:
       middlewares: ["default-whitelist"]
       service: whoami-svc
       tls: 
-          # pertama dns chalange untuk buat certifikat
+          # first dns chalange to generate certificate
           certResolver: cloudflare
           domains:
             - main: "domain.id"
